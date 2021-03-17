@@ -9,12 +9,13 @@ READING_RATE = 300
 
 start = """
 Welcome to ProfitManager.
-To start a session, first select the job you will be doing.
-1.  Trading
-2.  Mining
-3.  Exploring
-4.  Combat
-5.  Transport
+To start a session, first select the job you will be doing (includes mission records).
+0. Only Missions 
+1. Trading
+2. Mining
+3. Exploring
+4. Combat
+5. Transport
 
 You can change the job at anytime typing "job".
 If you want to check every available command, type "?".
@@ -40,8 +41,8 @@ def Start():
                         statsOptions(int(job))
                         break
                 #except Exception as e:
-                #        print(str(e))
-                #        exit()
+                        #print(str(e))
+                        #exit()
         
         
 
@@ -49,8 +50,8 @@ def FindJournal():
         driveRoot = "C:\\"
         username = os.getlogin()
         journalName = "Journal." + time.strftime("%y%m%d", time.localtime())
-        #journalPath = os.path.join(driveRoot, "Users", username, "Saved Games", "Frontier Developments", "Elite Dangerous")
-        journalPath = os.path.join('/', "home", username, "Escritorio", "Mis Cosas", "Projects", "ProfitManagerED")
+        journalPath = os.path.join(driveRoot, "Users", username, "Saved Games", "Frontier Developments", "Elite Dangerous")
+        #journalPath = os.path.join('/', "home", username, "Escritorio", "Mis Cosas", "Projects", "ProfitManagerED")
         journalFound = False
         for filename in os.listdir(journalPath):
                 if journalName in filename and os.path.isfile(os.path.join(journalPath, filename)):
@@ -70,24 +71,47 @@ def readJournal(lastJournal, user, stopWaiting):
         global sessionOn
         sessionOn = True
         while sessionOn:
-                for line in reversed(list(open(lastJournal, "r"))):
-                        data = json.loads(line)
-                        timestamp = datetime.strptime(data["timestamp"], "%Y-%m-%dT%H:%M:%SZ")
-        #                if timestamp < user.getStart_time():
-        #                        break
-        #                if data["event"] == "Shutdown":
-        #                        noGameOpenError()
+                with open(lastJournal, "r", encoding="utf-8") as journal:
+                        for line in reversed(list(journal)):
+                                data = json.loads(line)
+                                timestamp = datetime.strptime(data["timestamp"], "%Y-%m-%dT%H:%M:%SZ")
+                                if timestamp < user.getStart_time() or timestamp < user.getLastRead():
+                                        break
 
-                        #Statistics calculation for Trading and Mining
-                        if data["event"] == "MarketSell":
-                                if user.getJob() in [1, 2]:
-                                        user.addMarketSell(int(data['TotalSale']))
-                        if data["event"] == "MarketBuy":
-                                if user.getJob() in [1, 2]:
-                                        user.addMarketBuy(int(data['TotalCost']))
-                        if data["event"] == "Docked":
-                                user.addDock()
-                stopWaiting.wait(5)
+                                elif data["event"] == "Shutdown":
+                                        noGameOpenError()
+
+                                #Statistics calculation for Trading and Mining
+                                elif data["event"] == "MarketSell":
+                                        if user.getJob() in [1, 2]:
+                                                user.addMarketSell(int(data['TotalSale']))
+
+                                elif data["event"] == "MarketBuy":
+                                        if user.getJob() in [1, 2]:
+                                                user.addMarketBuy(int(data['TotalCost']))
+
+                                elif data["event"] == "Docked":
+                                        user.addDock()
+                                        print(user.getDocks())
+
+                                elif data["event"] == "MissionCompleted":
+                                        repLevel = data["FactionEffects"][0]["Reputation"]
+                                        user._nMissionsCompleted += 1
+                                        if repLevel == "+":
+                                                user.addRepReward(0)
+                                        elif repLevel == "++":
+                                                user.addRepReward(1)
+                                        elif repLevel == "+++":
+                                                user.addRepReward(2)
+                                        elif repLevel == "++++":
+                                                user.addRepReward(3)
+                                        elif repLevel == "+++++":
+                                                user.addRepReward(4)
+                                else:
+                                        pass
+                user.setLastRead()
+                journal.close()
+                stopWaiting.wait(10)
                 
 
 def statsOptions(job):
@@ -124,14 +148,23 @@ def statsOptions(job):
                         print("Session stopped. Write an option")
                         stopWaiting.set()
                         sessionOn = False
-                        user.stats()
+                        stats_to_file(user)
+                        print(user.stats())
 
                 elif option == "e":
                         if sessionOn:
                                 stopWaiting.set()
                                 sessionOn = False
-                                user.stats()
+                                stats_to_file(user)
+                                print(user.stats())
                         exit()
+
+def stats_to_file(user):
+        driveRoot = "C:\\"
+        username = os.getlogin()
+        stats_file = open(os.path.join(driveRoot, "Users", username, "Saved Games", "Frontier Developments", "Elite Dangerous", time.strftime("%y%m%d.txt", time.localtime())), "w")
+        stats_file.write(user.stats_to_json())
+        stats_file.close()
 
 Start()
 
